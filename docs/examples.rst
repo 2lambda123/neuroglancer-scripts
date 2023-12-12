@@ -15,7 +15,7 @@ two Nifti files based on the JuBrain human brain atlas, as published in version
 Note that you need to use `git-lfs <https://git-lfs.github.com/>`_ in order to
 see the contents of the NIfTI files (otherwise you can download them `from the
 repository on Github
-<https://github.com/HumanBrainProject/neuroglancer-scripts/tree/master/JuBrain>`_.
+<https://github.com/HumanBrainProject/neuroglancer-scripts/tree/master/examples>`_.)
 
 Conversion of the grey-level template image (MNI Colin27 T1 MRI)
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -152,3 +152,91 @@ BigBrain is a very large image (6572 × 7404 × 5711 voxels) reconstructed from
        white_right_327680.gii \
        classif/
    link-mesh-fragments --no-colon-suffix mesh_labels.csv classif/
+
+
+.. _Waxholm Rat:
+
+In the ``examples/Waxholm`` directory of the source distribution, you will find
+``WHS_SD_rat_T2star_v1.nii.gz``, sourced from
+`nitrc <https://www.nitrc.org/frs/?group_id=1081>`
+
+Conversion of the grey-level template image (sharded precomputed)
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+.. code-block:: sh
+
+   volume-to-precomputed \
+       --generate-info \
+       --sharded 2,2,0 \
+       ./build/WHS_SD_rat_T2star_v1.nii.gz \
+       ./build/output/
+
+At this point, you need to edit ``/build/output/info_fullres.json`` to set
+``"data_type": "uint8"``. This is done to reduce the size of the final volume
+and better normalization. Seprately, by way of nibabel, we also determined the
+min and max of the volume to be 10.203 and 32766.0 respectively.
+
+.. code-block:: sh
+
+  generate-scales-info ./build/output/info_fullres.json ./build/output/
+  volume-to-precomputed \
+      --sharding 2,2,0 \
+      --input-max 32766.0 \
+      --input-min 10.203 \
+      ./build/WHS_SD_rat_T2star_v1.nii.gz \
+      ./build/output/
+  compute-scales ./build/output/
+
+
+.. _Conversion of Big Brain to sharded precomputed format:
+
+Big Brain (20um) has been converted to neuroglancer precomputed format, and
+accessible at
+https://neuroglancer.humanbrainproject.eu/precomputed/BigBrainRelease.2015/8bit.
+Using this as the source volume, a sharded volume will be created.
+
+.. code-block:: sh
+  mkdir sharded_bigbrain/
+  curl --output sharded_bigbrain/info \
+    https://neuroglancer.humanbrainproject.eu/precomputed/BigBrainRelease.2015/8bit/info
+
+At this point, sharded_bigbrain/info was edited to contain the desired sharding
+specification. For a smaller scale test run, 20um and 40um scales can be
+removed.
+
+.. code-block:: diff
+
+   {
+     "type": "image",
+     "data_type": "uint8",
+     "num_channels": 1,
+     "scales": [
+       {
+         "chunk_sizes": [[64,64,64]],
+         "encoding": "raw",
+         "key": "20um",
+         "resolution": [21166.6666666666666, 20000, 21166.6666666666666],
+         "size": [6572, 7404, 5711],
+   -      "voxel_offset": [0, 0, 0]
+   +      "voxel_offset": [0, 0, 0],
+   +      "sharding": {
+   +         "@type": "neuroglancer_uint64_sharded_v1",
+   +         "data_encoding": "gzip",
+   +         "hash": "identity",
+   +         "minishard_bits": 2,
+   +         "minishard_index_encoding": "gzip",
+   +         "preshift_bits": 0,
+   +         "shard_bits": 2
+   +      }
+       },
+       // ...truncated for brevity
+     ]
+   }
+
+Start the conversion process.
+
+.. code-block:: sh
+
+  convert-chunks \
+    https://neuroglancer.humanbrainproject.eu/precomputed/BigBrainRelease.2015/8bit \
+    ./sharded_bigbrain/
